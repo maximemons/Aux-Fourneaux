@@ -17,16 +17,15 @@ import {
   serverTimestamp 
 } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
 
-// Global State
 let currentUser = null;
 let recipes = [];
+let categoriesList = [];
 let activeCategory = 'all';
 let favoritesFilterActive = false;
 let searchQuery = '';
 let isSignUpMode = false;
-let favoriteIds = []; // Array of recipe IDs marked as favorite
+let favoriteIds = [];
 
-// DOM Elements
 let categoriesBar, recipesGrid, emptyState, currentCategoryTitle, recipeCount, searchInput, btnFilterFavorites;
 let btnAddRecipe, btnLogin, btnLogout, userProfile, userAvatar, userEmail;
 let modalAuth, modalRecipeForm, modalRecipeDetail;
@@ -53,6 +52,7 @@ function initDOM() {
 
   setupEventListeners();
   initAuthObserver();
+  initCategoriesListener();
   initFirestore();
 }
 
@@ -62,19 +62,46 @@ if (document.readyState === 'loading') {
   initDOM();
 }
 
-// --- FAVORITES MANAGEMENT (Firestore for auth, localStorage for guests) ---
+function initCategoriesListener() {
+  try {
+    const catCol = collection(db, "categories");
+    onSnapshot(catCol, async (snapshot) => {
+      if (snapshot.empty) {
+        for (const cat of DEFAULT_CATEGORIES) {
+          await setDoc(doc(db, "categories", cat.id), {
+            name: cat.name,
+            icon: cat.icon
+          });
+        }
+      } else {
+        categoriesList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        renderCategories();
+        populateCategorySelect();
+      }
+    });
+  } catch (err) {
+    categoriesList = DEFAULT_CATEGORIES;
+    renderCategories();
+    populateCategorySelect();
+  }
+}
+
+function populateCategorySelect() {
+  const selectCategory = document.getElementById('recipe-category');
+  if (selectCategory) {
+    selectCategory.innerHTML = categoriesList.map(c => `
+      <option value="${c.name}">${c.name}</option>
+    `).join('');
+  }
+}
+
 async function loadFavorites() {
   if (currentUser) {
     try {
       const userFavRef = doc(db, "favorites", currentUser.uid);
       const snap = await getDoc(userFavRef);
-      if (snap.exists()) {
-        favoriteIds = snap.data().recipeIds || [];
-      } else {
-        favoriteIds = [];
-      }
+      favoriteIds = snap.exists() ? (snap.data().recipeIds || []) : [];
     } catch (err) {
-      console.error("Erreur chargement favoris Firestore", err);
       favoriteIds = [];
     }
   } else {
@@ -95,38 +122,33 @@ async function saveFavorites() {
       const userFavRef = doc(db, "favorites", currentUser.uid);
       await setDoc(userFavRef, { recipeIds: favoriteIds }, { merge: true });
     } catch (err) {
-      console.error("Erreur sauvegarde favoris Firestore", err);
+      console.error("Erreur sauvegarde favoris", err);
     }
   } else {
     try {
       localStorage.setItem('aux_fourneaux_favorites', JSON.stringify(favoriteIds));
     } catch (err) {
-      console.error("Erreur sauvegarde favoris localStorage", err);
+      console.error("Erreur localStorage", err);
     }
   }
 }
 
 window.toggleFavorite = async (id, event) => {
   if (event) event.stopPropagation();
-  
   if (favoriteIds.includes(id)) {
     favoriteIds = favoriteIds.filter(favId => favId !== id);
   } else {
     favoriteIds.push(id);
   }
-
   await saveFavorites();
   updateFavoritesUI();
   renderRecipes();
 
-  // If detail modal is open, update its heart icon too
   const detailHeart = document.getElementById('detail-heart-icon');
   if (detailHeart) {
-    if (favoriteIds.includes(id)) {
-      detailHeart.className = "fa-solid fa-heart text-rose-500 text-xl";
-    } else {
-      detailHeart.className = "fa-regular fa-heart text-slate-500 hover:text-rose-500 text-xl";
-    }
+    detailHeart.className = favoriteIds.includes(id) 
+      ? "fa-solid fa-heart text-rose-500 text-xl" 
+      : "fa-regular fa-heart text-slate-500 hover:text-rose-500 text-xl";
   }
 };
 
@@ -141,57 +163,33 @@ function updateFavoritesUI() {
   }
 }
 
-// Icons mapping for categories
-function getCategoryIcon(catName) {
-  const normalized = catName.toLowerCase().trim();
-  if (normalized.includes('bébé') || normalized.includes('bebe')) return 'fa-baby';
-  if (normalized.includes('apéritif') || normalized.includes('aperitif') || normalized.includes('tapas')) return 'fa-martini-glass-citrus';
-  if (normalized.includes('entrée') || normalized.includes('entree')) return 'fa-bowl-rice';
-  if (normalized.includes('plat')) return 'fa-utensils';
-  if (normalized.includes('dessert')) return 'fa-cake-candles';
-  if (normalized.includes('boisson') || normalized.includes('smoothie')) return 'fa-glass-water';
-  if (normalized.includes('sauce')) return 'fa-jar';
-  if (normalized.includes('pain') || normalized.includes('boulangerie')) return 'fa-bread-slice';
-  if (normalized.includes('végé') || normalized.includes('vege') || normalized.includes('végan')) return 'fa-leaf';
-  return 'fa-tag';
-}
-
 function renderCategories() {
   if (!categoriesBar) return;
 
-  const presentCategories = Array.from(new Set(
-    recipes
-      .map(r => r.category ? r.category.trim() : '')
-      .filter(c => c.length > 0)
-  )).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
+  const usedCategoryNames = Array.from(new Set(
+    recipes.map(r => r.category ? r.category.trim() : '').filter(c => c.length > 0)
+  ));
 
-  if (presentCategories.length === 0) {
+  const activeCategories = categoriesList.filter(c => usedCategoryNames.some(u => u.toLowerCase() === c.name.toLowerCase()));
+
+  if (activeCategories.length === 0) {
     categoriesBar.innerHTML = '';
     return;
   }
 
   const catList = [
-    { id: 'all', label: 'Toutes', icon: 'fa-border-all' },
-    ...presentCategories.map(cat => ({
-      id: cat.toLowerCase(),
-      label: cat,
-      icon: getCategoryIcon(cat)
-    }))
+    { id: 'all', name: 'Toutes', icon: 'fa-border-all' },
+    ...activeCategories
   ];
-
-  if (activeCategory !== 'all' && !presentCategories.some(c => c.toLowerCase() === activeCategory)) {
-    activeCategory = 'all';
-  }
 
   categoriesBar.innerHTML = catList.map(cat => `
     <button data-id="${cat.id}" class="category-btn flex items-center space-x-2 px-4 py-2 rounded-2xl text-xs font-semibold whitespace-nowrap transition-all duration-200 cursor-pointer ${!favoritesFilterActive && cat.id === activeCategory ? 'bg-orange-600 text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'}">
       <i class="fa-solid ${cat.icon}"></i>
-      <span>${cat.label}</span>
+      <span>${cat.name}</span>
     </button>
   `).join('');
 }
 
-// --- AUTH OBSERVER ---
 function initAuthObserver() {
   onAuthStateChanged(auth, async (user) => {
     currentUser = user;
@@ -216,19 +214,20 @@ function initAuthObserver() {
   });
 }
 
-// --- FIRESTORE SUBSCRIPTION ---
 function initFirestore() {
   try {
     const colRef = collection(db, "recipes");
-    onSnapshot(colRef, (snapshot) => {
-      recipes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      renderCategories();
-      renderRecipes();
-    }, (error) => {
-      console.warn("Erreur d'accès à Firestore.", error);
-      recipes = [];
-      renderCategories();
-      renderRecipes();
+    onSnapshot(colRef, async (snapshot) => {
+      if (snapshot.empty) {
+        await addDoc(colRef, {
+          ...BASIC_RISOTTO,
+          createdAt: serverTimestamp()
+        });
+      } else {
+        recipes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        renderCategories();
+        renderRecipes();
+      }
     });
   } catch (err) {
     recipes = [];
@@ -237,13 +236,13 @@ function initFirestore() {
   }
 }
 
-// --- RENDER RECIPES ---
 function renderRecipes() {
   if (!recipesGrid) return;
 
   let filtered = recipes.filter(r => {
-    const catVal = r.category ? r.category.trim().toLowerCase() : '';
-    const matchesCat = favoritesFilterActive ? favoriteIds.includes(r.id) : (activeCategory === 'all' || catVal === activeCategory);
+    const matchesCat = favoritesFilterActive 
+      ? favoriteIds.includes(r.id) 
+      : (activeCategory === 'all' || (r.category && categoriesList.find(c => c.id === activeCategory)?.name.toLowerCase() === r.category.toLowerCase()));
     const matchesSearch = !searchQuery || 
       (r.title && r.title.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (r.ingredients && r.ingredients.some(i => i.toLowerCase().includes(searchQuery.toLowerCase())));
@@ -256,10 +255,8 @@ function renderRecipes() {
     if (favoritesFilterActive) {
       currentCategoryTitle.querySelector('span').textContent = 'Recettes favorites';
     } else {
-      const catLabel = activeCategory === 'all' 
-        ? 'Toutes les recettes' 
-        : recipes.find(r => r.category && r.category.trim().toLowerCase() === activeCategory)?.category || activeCategory;
-      currentCategoryTitle.querySelector('span').textContent = catLabel;
+      const activeObj = categoriesList.find(c => c.id === activeCategory);
+      currentCategoryTitle.querySelector('span').textContent = activeCategory === 'all' ? 'Toutes les recettes' : (activeObj ? activeObj.name : 'Recettes');
     }
   }
 
@@ -268,15 +265,6 @@ function renderRecipes() {
     if (emptyState) {
       emptyState.classList.remove('hidden');
       emptyState.classList.add('flex');
-      const titleEl = emptyState.querySelector('h4');
-      const descEl = emptyState.querySelector('p');
-      if (favoritesFilterActive) {
-        if (titleEl) titleEl.textContent = "Aucun favori pour l'instant";
-        if (descEl) descEl.textContent = "Cliquez sur le cœur d'une recette pour l'ajouter à vos favoris.";
-      } else {
-        if (titleEl) titleEl.textContent = "Aucune recette disponible";
-        if (descEl) descEl.textContent = "Connectez-vous pour ajouter votre première recette au carnet.";
-      }
     }
     return;
   }
@@ -290,13 +278,12 @@ function renderRecipes() {
     const isFav = favoriteIds.includes(r.id);
     return `
       <div class="bg-white rounded-3xl border border-slate-200/85 overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 flex flex-col group cursor-pointer relative" onclick="openRecipeDetail('${r.id}')">
-        <!-- Bouton Favori sur la carte -->
-        <button onclick="toggleFavorite('${r.id}', event)" class="absolute top-3 right-3 z-10 w-9 h-9 bg-white/90 backdrop-blur-md rounded-full flex items-center justify-center shadow-sm transition-transform hover:scale-110 cursor-pointer" title="${isFav ? 'Retirer des favoris' : 'Ajouter aux favoris'}">
+        <button onclick="toggleFavorite('${r.id}', event)" class="absolute top-3 right-3 z-10 w-9 h-9 bg-white/90 backdrop-blur-md rounded-full flex items-center justify-center shadow-sm transition-transform hover:scale-110 cursor-pointer">
           <i class="${isFav ? 'fa-solid fa-heart text-rose-500' : 'fa-regular fa-heart text-slate-500 hover:text-rose-500'} text-sm"></i>
         </button>
 
         <div class="relative h-48 overflow-hidden bg-slate-100">
-          <img src="${r.imageUrl || 'https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&q=80&w=800'}" alt="${r.title || 'Recette'}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
+          <img src="${r.imageUrl || 'https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&q=80&w=800'}" alt="${r.title}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
           <span class="absolute top-3 left-3 bg-white/90 backdrop-blur-md text-slate-800 text-xs font-semibold px-3 py-1 rounded-full shadow-sm">
             ${r.category || 'Général'}
           </span>
@@ -313,10 +300,10 @@ function renderRecipes() {
 
           ${currentUser ? `
             <div class="flex items-center justify-end space-x-2 pt-3 border-t border-slate-100" onclick="event.stopPropagation()">
-              <button onclick="openEditForm('${r.id}')" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-orange-100 text-slate-600 hover:text-orange-600 flex items-center justify-center transition-colors cursor-pointer" title="Modifier">
+              <button onclick="openEditForm('${r.id}')" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-orange-100 text-slate-600 hover:text-orange-600 flex items-center justify-center transition-colors cursor-pointer">
                 <i class="fa-solid fa-pen text-xs"></i>
               </button>
-              <button onclick="deleteRecipe('${r.id}')" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-red-100 text-slate-600 hover:text-red-600 flex items-center justify-center transition-colors cursor-pointer" title="Supprimer">
+              <button onclick="deleteRecipe('${r.id}')" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-red-100 text-slate-600 hover:text-red-600 flex items-center justify-center transition-colors cursor-pointer">
                 <i class="fa-solid fa-trash text-xs"></i>
               </button>
             </div>
@@ -327,7 +314,6 @@ function renderRecipes() {
   }).join('');
 }
 
-// Global functions attached to window
 window.openRecipeDetail = (id) => {
   const r = recipes.find(item => item.id === id);
   if (!r) return;
@@ -337,12 +323,11 @@ window.openRecipeDetail = (id) => {
   content.innerHTML = `
     <div class="relative h-64 sm:h-80 w-full">
       <img src="${r.imageUrl || 'https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&q=80&w=800'}" class="w-full h-full object-cover">
-      <div class="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-transparent to-transparent flex items-end p-6 sm:p-8 justify-between items-end">
+      <div class="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-transparent to-transparent flex items-end p-6 sm:p-8 justify-between">
         <div>
           <span class="bg-orange-600 text-white text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wider">${r.category || 'Général'}</span>
           <h2 class="text-2xl sm:text-3xl font-serif font-bold text-white mt-2">${r.title}</h2>
         </div>
-        <!-- Bouton favori dans la modale de détail -->
         <button onclick="toggleFavorite('${r.id}', event)" class="bg-white/90 backdrop-blur-md w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg hover:scale-105 transition-transform cursor-pointer">
           <i id="detail-heart-icon" class="${isFav ? 'fa-solid fa-heart text-rose-500' : 'fa-regular fa-heart text-slate-500 hover:text-rose-500'} text-xl"></i>
         </button>
@@ -405,7 +390,6 @@ window.deleteRecipe = async (id) => {
 
   try {
     await deleteDoc(doc(db, "recipes", id));
-    // Also remove from favorites if present
     if (favoriteIds.includes(id)) {
       favoriteIds = favoriteIds.filter(favId => favId !== id);
       await saveFavorites();
@@ -415,9 +399,7 @@ window.deleteRecipe = async (id) => {
   }
 };
 
-// Event Listeners setup
 function setupEventListeners() {
-  // Favorites Filter Button
   if (btnFilterFavorites) {
     btnFilterFavorites.addEventListener('click', () => {
       favoritesFilterActive = !favoritesFilterActive;
@@ -431,7 +413,7 @@ function setupEventListeners() {
     categoriesBar.addEventListener('click', (e) => {
       const btn = e.target.closest('.category-btn');
       if (!btn) return;
-      favoritesFilterActive = false; // Reset favorites filter when clicking a category
+      favoritesFilterActive = false;
       activeCategory = btn.dataset.id;
       updateFavoritesUI();
       renderCategories();
@@ -520,11 +502,11 @@ function setupEventListeners() {
 
       const data = {
         title: document.getElementById('recipe-title').value,
-        category: document.getElementById('recipe-category').value.trim(),
+        category: document.getElementById('recipe-category').value,
         prepTime: document.getElementById('recipe-prep').value,
         cookTime: document.getElementById('recipe-cook').value,
         servings: document.getElementById('recipe-servings').value,
-        imageUrl: document.getElementById('recipe-image').value,
+        imageUrl: document.getElementById('root-image') ? document.getElementById('root-image').value : document.getElementById('recipe-image').value,
         ingredients: document.getElementById('recipe-ingredients').value.split('\n').filter(i => i.trim() !== ''),
         steps: document.getElementById('recipe-steps').value.split('\n').filter(s => s.trim() !== ''),
         updatedAt: serverTimestamp()
