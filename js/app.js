@@ -25,6 +25,7 @@ let favoritesFilterActive = false;
 let searchQuery = '';
 let isSignUpMode = false;
 let favoriteIds = [];
+let currentRecipeDetail = null;
 
 let categoriesBar, recipesGrid, emptyState, currentCategoryTitle, recipeCount, searchInput, btnFilterFavorites;
 let btnAddRecipe, btnLogin, btnLogout, userProfile, userAvatar, userEmail;
@@ -317,6 +318,11 @@ function renderRecipes() {
 window.openRecipeDetail = (id) => {
   const r = recipes.find(item => item.id === id);
   if (!r) return;
+  currentRecipeDetail = r;
+
+  const defaultServingsMatch = r.servings ? r.servings.match(/\d+/) : null;
+  const baseServings = defaultServingsMatch ? parseInt(defaultServingsMatch[0], 10) : 4;
+  window._activeServings = baseServings;
 
   const isFav = favoriteIds.includes(r.id);
   const content = document.getElementById('detail-content');
@@ -335,17 +341,28 @@ window.openRecipeDetail = (id) => {
     </div>
 
     <div class="p-6 sm:p-8 space-y-6">
-      <div class="flex items-center justify-around p-4 bg-orange-50/50 rounded-2xl border border-orange-100 text-center text-xs sm:text-sm font-semibold text-slate-700">
-        <div><i class="fa-regular fa-clock text-orange-600 text-base block mb-1"></i>Préparation: ${r.prepTime || 'N/A'}</div>
-        <div><i class="fa-solid fa-fire text-orange-600 text-base block mb-1"></i>Cuisson: ${r.cookTime || 'S.A.'}</div>
-        <div><i class="fa-solid fa-utensils text-orange-600 text-base block mb-1"></i>Portions: ${r.servings || 'N/A'}</div>
+      <div class="flex flex-col sm:flex-row items-center justify-between p-4 bg-orange-50/50 rounded-2xl border border-orange-100 gap-4">
+        <div class="flex items-center space-x-3 text-sm font-semibold text-slate-700">
+          <i class="fa-solid fa-user-group text-orange-600 text-lg"></i>
+          <span>Ajuster pour :</span>
+          <div class="flex items-center space-x-2">
+            <button onclick="changeServings(-1, ${baseServings})" class="w-8 h-8 rounded-xl bg-white border border-orange-200 text-orange-600 font-bold hover:bg-orange-100 transition-colors shadow-sm cursor-pointer">-</button>
+            <span id="servings-display" class="w-8 text-center text-base font-bold text-orange-700">${baseServings}</span>
+            <button onclick="changeServings(1, ${baseServings})" class="w-8 h-8 rounded-xl bg-white border border-orange-200 text-orange-600 font-bold hover:bg-orange-100 transition-colors shadow-sm cursor-pointer">+</button>
+            <span class="text-slate-500 font-normal">pers.</span>
+          </div>
+        </div>
+
+        <div class="flex items-center space-x-6 text-xs sm:text-sm font-semibold text-slate-700">
+          <div><i class="fa-regular fa-clock text-orange-600 text-base block mb-1"></i>Préparation: ${r.prepTime || 'N/A'}</div>
+          <div><i class="fa-solid fa-fire text-orange-600 text-base block mb-1"></i>Cuisson: ${r.cookTime || 'S.A.'}</div>
+        </div>
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
         <div class="space-y-3">
           <h4 class="font-serif font-bold text-lg text-slate-900 border-b border-slate-200 pb-2">Ingrédients</h4>
-          <ul class="space-y-2 text-sm text-slate-600">
-            ${(r.ingredients || []).map(i => `<li class="flex items-start space-x-2"><i class="fa-solid fa-check text-orange-500 mt-1 text-xs"></i><span>${i}</span></li>`).join('')}
+          <ul id="ingredients-list" class="space-y-2 text-sm text-slate-600">
           </ul>
         </div>
 
@@ -364,8 +381,44 @@ window.openRecipeDetail = (id) => {
     </div>
   `;
 
+  renderIngredients(baseServings, baseServings);
   modalRecipeDetail.classList.remove('hidden');
 };
+
+window.changeServings = (delta, baseServings) => {
+  if (!currentRecipeDetail) return;
+  
+  window._activeServings = (window._activeServings || baseServings) + delta;
+  if (window._activeServings < 1) window._activeServings = 1;
+  if (window._activeServings > 50) window._activeServings = 50;
+
+  const displayEl = document.getElementById('servings-display');
+  if (displayEl) displayEl.textContent = window._activeServings;
+
+  renderIngredients(window._activeServings, baseServings);
+};
+
+function renderIngredients(targetServings, baseServings) {
+  const ul = document.getElementById('ingredients-list');
+  if (!ul || !currentRecipeDetail) return;
+
+  const ratio = targetServings / baseServings;
+
+  ul.innerHTML = (currentRecipeDetail.ingredients || []).map(item => {
+    const scaledItem = item.replace(/(\d+([.,]\d+)?)/, (match) => {
+      const num = parseFloat(match.replace(',', '.'));
+      const multiplied = num * ratio;
+      return Number.isInteger(multiplied) ? multiplied : multiplied.toFixed(1).replace('.0', '');
+    });
+
+    return `
+      <li class="flex items-start space-x-2">
+        <i class="fa-solid fa-check text-orange-500 mt-1 text-xs"></i>
+        <span>${scaledItem}</span>
+      </li>
+    `;
+  }).join('');
+}
 
 window.openEditForm = (id) => {
   const r = recipes.find(item => item.id === id);
@@ -506,7 +559,7 @@ function setupEventListeners() {
         prepTime: document.getElementById('recipe-prep').value,
         cookTime: document.getElementById('recipe-cook').value,
         servings: document.getElementById('recipe-servings').value,
-        imageUrl: document.getElementById('root-image') ? document.getElementById('root-image').value : document.getElementById('recipe-image').value,
+        imageUrl: document.getElementById('recipe-image').value,
         ingredients: document.getElementById('recipe-ingredients').value.split('\n').filter(i => i.trim() !== ''),
         steps: document.getElementById('recipe-steps').value.split('\n').filter(s => s.trim() !== ''),
         updatedAt: serverTimestamp()
