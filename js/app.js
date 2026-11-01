@@ -32,6 +32,19 @@ let categoriesBar, recipesGrid, emptyState, currentCategoryTitle, recipeCount, s
 let btnAddRecipe, btnLogin, btnLogout, userProfile, userAvatar, userEmail;
 let modalAuth, modalRecipeForm, modalRecipeDetail;
 
+const DEFAULT_CATEGORIES = [
+  { id: 'bebe', name: 'Bébé & Éveil', icon: 'fa-baby' },
+  { id: 'aperitifs', name: 'Apéritifs & Tapas', icon: 'fa-martini-glass-citrus' },
+  { id: 'entrees', name: 'Entrées', icon: 'fa-bowl-rice' },
+  { id: 'plats', name: 'Plats Principaux', icon: 'fa-utensils' },
+  { id: 'desserts', name: 'Desserts', icon: 'fa-cake-candles' },
+  { id: 'boissons', name: 'Boissons & Smoothies', icon: 'fa-glass-water' },
+  { id: 'sauces', name: 'Sauces & Condiments', icon: 'fa-jar' },
+  { id: 'pain', name: 'Pains & Boulangerie', icon: 'fa-bread-slice' },
+  { id: 'vege', name: 'Végétarien & Végan', icon: 'fa-leaf' },
+  { id: 'soupes', name: 'Soupes & Potages', icon: 'fa-bowl-food' }
+];
+
 function normalizeText(text) {
   if (!text) return '';
   return text
@@ -65,12 +78,27 @@ function initDOM() {
   initAuthObserver();
   initCategoriesListener();
   initFirestore();
+
+  // Gestion des liens de partage d'URL deep-link (#recipe-ID) et bouton retour navigateur
+  window.addEventListener('popstate', checkUrlHash);
 }
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initDOM);
 } else {
   initDOM();
+}
+
+function checkUrlHash() {
+  const hash = window.location.hash;
+  if (hash.startsWith('#recipe-')) {
+    const recipeId = hash.replace('#recipe-', '');
+    if (recipes.length > 0) {
+      openRecipeDetail(recipeId, false);
+    }
+  } else {
+    closeRecipeDetailModal(false);
+  }
 }
 
 function initCategoriesListener() {
@@ -227,6 +255,7 @@ function initFirestore() {
       recipes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       renderCategories();
       renderRecipes();
+      checkUrlHash(); // Vérifier si l'URL contient un lien de partage de recette #recipe-ID
     });
   } catch (err) {
     recipes = [];
@@ -371,11 +400,28 @@ function renderRecipes() {
   }).join('');
 }
 
-window.openRecipeDetail = (id) => {
+window.copyRecipeShareLink = (id) => {
+  const shareUrl = `${window.location.origin}${window.location.pathname}#recipe-${id}`;
+  navigator.clipboard.writeText(shareUrl).then(() => {
+    const btnText = document.getElementById('share-btn-text');
+    if (btnText) {
+      btnText.textContent = "Lien copié !";
+      setTimeout(() => { btnText.textContent = "Partager"; }, 2500);
+    }
+  }).catch(err => {
+    prompt("Copiez ce lien de partage :", shareUrl);
+  });
+};
+
+window.openRecipeDetail = (id, updateHistory = true) => {
   const r = recipes.find(item => item.id === id);
   if (!r) return;
   currentRecipeDetail = r;
   showTotalsMode = false;
+
+  if (updateHistory) {
+    history.pushState(null, '', `#recipe-${id}`);
+  }
 
   const defaultServingsMatch = r.servings ? r.servings.match(/\d+/) : null;
   const baseServings = defaultServingsMatch ? parseInt(defaultServingsMatch[0], 10) : 4;
@@ -398,9 +444,15 @@ window.openRecipeDetail = (id) => {
             </div>
           ` : ''}
         </div>
-        <button onclick="toggleFavorite('${r.id}', event)" class="bg-white/90 backdrop-blur-md w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg hover:scale-105 transition-transform cursor-pointer">
-          <i id="detail-heart-icon" class="${isFav ? 'fa-solid fa-heart text-rose-500' : 'fa-regular fa-heart text-slate-500 hover:text-rose-500'} text-xl"></i>
-        </button>
+        <div class="flex items-center space-x-2">
+          <button onclick="copyRecipeShareLink('${r.id}')" class="bg-white/90 backdrop-blur-md px-3 py-2 rounded-2xl flex items-center space-x-2 shadow-lg hover:scale-105 transition-transform cursor-pointer text-slate-700 text-xs font-bold">
+            <i class="fa-solid fa-share-nodes text-orange-600 text-sm"></i>
+            <span id="share-btn-text" class="hidden sm:inline">Partager</span>
+          </button>
+          <button onclick="toggleFavorite('${r.id}', event)" class="bg-white/90 backdrop-blur-md w-10 h-10 rounded-2xl flex items-center justify-center shadow-lg hover:scale-105 transition-transform cursor-pointer">
+            <i id="detail-heart-icon" class="${isFav ? 'fa-solid fa-heart text-rose-500' : 'fa-regular fa-heart text-slate-500 hover:text-rose-500'} text-lg"></i>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -464,8 +516,22 @@ window.openRecipeDetail = (id) => {
   `;
 
   renderIngredientsAndSteps(baseServings, baseServings);
+  
+  // Réinitialiser le défilement en haut du popup à l'ouverture
+  content.scrollTop = 0;
   modalRecipeDetail.classList.remove('hidden');
 };
+
+function closeRecipeDetailModal(updateHistory = true) {
+  if (modalRecipeDetail) {
+    modalRecipeDetail.classList.add('hidden');
+    const content = document.getElementById('detail-content');
+    if (content) content.scrollTop = 0;
+  }
+  if (updateHistory && window.location.hash.startsWith('#recipe-')) {
+    history.pushState(null, '', window.location.pathname + window.location.search);
+  }
+}
 
 window.toggleIngredientsTotals = (baseServings) => {
   showTotalsMode = !showTotalsMode;
@@ -612,6 +678,8 @@ window.openEditForm = (id) => {
   document.getElementById('recipe-ingredients').value = formatSectionedTextForForm(r.ingredientsSections, r.ingredients);
   document.getElementById('recipe-steps').value = formatSectionedTextForForm(r.stepsSections, r.steps);
 
+  const formModalBody = document.getElementById('form-modal-body');
+  if (formModalBody) formModalBody.scrollTop = 0;
   modalRecipeForm.classList.remove('hidden');
 };
 
@@ -630,6 +698,20 @@ window.deleteRecipe = async (id) => {
 };
 
 function setupEventListeners() {
+  const btnHome = document.getElementById('btn-home');
+  if (btnHome) {
+    btnHome.addEventListener('click', () => {
+      closeRecipeDetailModal(true);
+      activeCategory = 'all';
+      favoritesFilterActive = false;
+      searchQuery = '';
+      if (searchInput) searchInput.value = '';
+      updateFavoritesUI();
+      renderCategories();
+      renderRecipes();
+    });
+  }
+
   if (btnFilterFavorites) {
     btnFilterFavorites.addEventListener('click', () => {
       favoritesFilterActive = !favoritesFilterActive;
@@ -669,6 +751,8 @@ function setupEventListeners() {
       document.getElementById('form-title').textContent = "Nouvelle Recette";
       document.getElementById('recipe-form').reset();
       document.getElementById('recipe-id').value = '';
+      const formModalBody = document.getElementById('form-modal-body');
+      if (formModalBody) formModalBody.scrollTop = 0;
       if (modalRecipeForm) modalRecipeForm.classList.remove('hidden');
     });
   }
@@ -683,7 +767,7 @@ function setupEventListeners() {
   if (cancelFormBtn) cancelFormBtn.addEventListener('click', () => modalRecipeForm.classList.add('hidden'));
 
   const closeDetailBtn = document.getElementById('btn-close-detail');
-  if (closeDetailBtn) closeDetailBtn.addEventListener('click', () => modalRecipeDetail.classList.add('hidden'));
+  if (closeDetailBtn) closeDetailBtn.addEventListener('click', () => closeRecipeDetailModal(true));
 
   const toggleAuthModeBtn = document.getElementById('toggle-auth-mode');
   if (toggleAuthModeBtn) {
@@ -764,7 +848,7 @@ function setupEventListeners() {
           await updateDoc(doc(db, "recipes", id), data);
         } else {
           data.createdAt = serverTimestamp();
-          await addDoc(collection(db, "recipes", id), data);
+          await addDoc(collection(db, "recipes"), data);
         }
         if (modalRecipeForm) modalRecipeForm.classList.add('hidden');
       } catch (err) {
