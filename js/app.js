@@ -31,19 +31,6 @@ let categoriesBar, recipesGrid, emptyState, currentCategoryTitle, recipeCount, s
 let btnAddRecipe, btnLogin, btnLogout, userProfile, userAvatar, userEmail;
 let modalAuth, modalRecipeForm, modalRecipeDetail;
 
-const DEFAULT_CATEGORIES = [
-  { id: 'bebe', name: 'Bébé & Éveil', icon: 'fa-baby' },
-  { id: 'aperitifs', name: 'Apéritifs & Tapas', icon: 'fa-martini-glass-citrus' },
-  { id: 'entrees', name: 'Entrées', icon: 'fa-bowl-rice' },
-  { id: 'plats', name: 'Plats Principaux', icon: 'fa-utensils' },
-  { id: 'desserts', name: 'Desserts', icon: 'fa-cake-candles' },
-  { id: 'boissons', name: 'Boissons & Smoothies', icon: 'fa-glass-water' },
-  { id: 'sauces', name: 'Sauces & Condiments', icon: 'fa-jar' },
-  { id: 'pain', name: 'Pains & Boulangerie', icon: 'fa-bread-slice' },
-  { id: 'vege', name: 'Végétarien & Végan', icon: 'fa-leaf' },
-  { id: 'soupes', name: 'Soupes & Potages', icon: 'fa-bowl-food' }
-];
-
 function initDOM() {
   categoriesBar = document.getElementById('categories-bar');
   recipesGrid = document.getElementById('recipes-grid');
