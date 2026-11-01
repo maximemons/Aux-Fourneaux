@@ -596,12 +596,36 @@ function closeRecipeDetailModal(updateHistory = true) {
   }
 }
 
-function closeAllModals() {
-  if (modalAuth) modalAuth.classList.add('hidden');
+function handleFormCloseRequest() {
+  if (modalRecipeForm && !modalRecipeForm.classList.contains('hidden')) {
+    const titleInput = document.getElementById('recipe-title');
+    const hasContent = titleInput && titleInput.value.trim().length > 0;
+    
+    if (hasContent) {
+      if (!confirm("Des modifications sont en cours. Voulez-vous vraiment quitter sans enregistrer ?")) {
+        return;
+      }
+    }
+    closeRecipeFormModal();
+  }
+}
+
+function closeRecipeFormModal() {
   if (modalRecipeForm) {
     modalRecipeForm.classList.add('hidden');
     const formModalBody = document.getElementById('form-modal-body');
     if (formModalBody) formModalBody.scrollTop = 0;
+  }
+}
+
+function closeAllModals() {
+  if (modalAuth && !modalAuth.classList.contains('hidden')) {
+    modalAuth.classList.add('hidden');
+    return;
+  }
+  if (modalRecipeForm && !modalRecipeForm.classList.contains('hidden')) {
+    handleFormCloseRequest();
+    return;
   }
   closeRecipeDetailModal(true);
 }
@@ -755,6 +779,12 @@ window.openEditForm = (id) => {
   const formModalBody = document.getElementById('form-modal-body');
   if (formModalBody) formModalBody.scrollTop = 0;
   modalRecipeForm.classList.remove('hidden');
+
+  // Focus sur le premier champ (Titre de la recette)
+  setTimeout(() => {
+    const titleInput = document.getElementById('recipe-title');
+    if (titleInput) titleInput.focus();
+  }, 50);
 };
 
 window.deleteRecipe = async (id) => {
@@ -828,6 +858,12 @@ function setupEventListeners() {
       const formModalBody = document.getElementById('form-modal-body');
       if (formModalBody) formModalBody.scrollTop = 0;
       if (modalRecipeForm) modalRecipeForm.classList.remove('hidden');
+
+      // Focus sur le premier champ (Titre de la recette)
+      setTimeout(() => {
+        const titleInput = document.getElementById('recipe-title');
+        if (titleInput) titleInput.focus();
+      }, 50);
     });
   }
 
@@ -837,18 +873,14 @@ function setupEventListeners() {
   const closeFormBtn = document.getElementById('btn-close-form');
   if (closeFormBtn) {
     closeFormBtn.addEventListener('click', () => {
-      modalRecipeForm.classList.add('hidden');
-      const formModalBody = document.getElementById('form-modal-body');
-      if (formModalBody) formModalBody.scrollTop = 0;
+      handleFormCloseRequest();
     });
   }
 
   const cancelFormBtn = document.getElementById('btn-cancel-form');
   if (cancelFormBtn) {
     cancelFormBtn.addEventListener('click', () => {
-      modalRecipeForm.classList.add('hidden');
-      const formModalBody = document.getElementById('form-modal-body');
-      if (formModalBody) formModalBody.scrollTop = 0;
+      handleFormCloseRequest();
     });
   }
 
