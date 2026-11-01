@@ -319,6 +319,8 @@ function renderRecipes() {
 
   recipesGrid.innerHTML = filtered.map(r => {
     const isFav = favoriteIds.includes(r.id);
+    const isVideo = r.externalLink && (r.externalLink.includes('youtube.com') || r.externalLink.includes('youtu.be') || r.externalLink.includes('vimeo') || r.externalLink.includes('tiktok.com'));
+
     return `
       <div class="bg-white rounded-3xl border border-slate-200/85 overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 flex flex-col group cursor-pointer relative" onclick="openRecipeDetail('${r.id}')">
         <button onclick="toggleFavorite('${r.id}', event)" class="absolute top-3 right-3 z-10 w-9 h-9 bg-white/90 backdrop-blur-md rounded-full flex items-center justify-center shadow-sm transition-transform hover:scale-110 cursor-pointer">
@@ -330,6 +332,12 @@ function renderRecipes() {
           <span class="absolute top-3 left-3 bg-white/90 backdrop-blur-md text-slate-800 text-xs font-semibold px-3 py-1 rounded-full shadow-sm">
             ${r.category || 'Général'}
           </span>
+          ${r.externalLink ? `
+            <span class="absolute bottom-3 right-3 bg-slate-900/80 backdrop-blur-md text-white text-[11px] font-semibold px-2.5 py-1 rounded-full flex items-center space-x-1 shadow-sm">
+              <i class="fa-solid ${isVideo ? 'fa-video text-red-400' : 'fa-link text-orange-400'} text-[10px]"></i>
+              <span>${isVideo ? 'Vidéo' : 'Lien'}</span>
+            </span>
+          ` : ''}
         </div>
 
         <div class="p-5 flex-grow flex flex-col justify-between space-y-4">
@@ -374,6 +382,8 @@ window.openRecipeDetail = (id) => {
   window._activeServings = baseServings;
 
   const isFav = favoriteIds.includes(r.id);
+  const isVideo = r.externalLink && (r.externalLink.includes('youtube.com') || r.externalLink.includes('youtu.be') || r.externalLink.includes('vimeo') || r.externalLink.includes('tiktok.com'));
+
   const content = document.getElementById('detail-content');
   content.innerHTML = `
     <div class="relative h-64 sm:h-80 w-full">
@@ -395,6 +405,24 @@ window.openRecipeDetail = (id) => {
     </div>
 
     <div class="p-6 sm:p-8 space-y-6">
+      ${r.externalLink ? `
+        <div class="flex items-center justify-between p-4 bg-slate-900 text-white rounded-2xl shadow-sm">
+          <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl ${isVideo ? 'bg-red-500/20 text-red-400' : 'bg-orange-500/20 text-orange-400'} flex items-center justify-center text-lg">
+              <i class="fa-solid ${isVideo ? 'fa-play' : 'fa-arrow-up-right-from-square'}"></i>
+            </div>
+            <div>
+              <h5 class="text-sm font-bold">${isVideo ? 'Vidéo / Tutoriel disponible' : 'Source & Détails externes'}</h5>
+              <p class="text-xs text-slate-400 truncate max-w-xs sm:max-w-md">${r.externalLink}</p>
+            </div>
+          </div>
+          <a href="${r.externalLink}" target="_blank" rel="noopener noreferrer" class="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white font-semibold text-xs rounded-xl transition-colors flex items-center space-x-2 flex-shrink-0">
+            <span>Ouvrir</span>
+            <i class="fa-solid fa-external-link text-[10px]"></i>
+          </a>
+        </div>
+      ` : ''}
+
       <div class="flex flex-col sm:flex-row items-center justify-between p-4 bg-orange-50/50 rounded-2xl border border-orange-100 gap-4">
         <div class="flex items-center space-x-3 text-sm font-semibold text-slate-700">
           <i class="fa-solid fa-user-group text-orange-600 text-lg"></i>
@@ -579,6 +607,7 @@ window.openEditForm = (id) => {
   document.getElementById('recipe-servings').value = r.servings || '';
   document.getElementById('recipe-tags').value = (r.tags || []).join(', ');
   document.getElementById('recipe-image').value = r.imageUrl || '';
+  document.getElementById('recipe-external-link').value = r.externalLink || '';
   
   document.getElementById('recipe-ingredients').value = formatSectionedTextForForm(r.ingredientsSections, r.ingredients);
   document.getElementById('recipe-steps').value = formatSectionedTextForForm(r.stepsSections, r.steps);
@@ -722,6 +751,7 @@ function setupEventListeners() {
         servings: document.getElementById('recipe-servings').value,
         tags: tagsArray,
         imageUrl: document.getElementById('recipe-image').value,
+        externalLink: document.getElementById('recipe-external-link').value,
         ingredientsSections: ingSections,
         ingredients: flatIngredients,
         stepsSections: stepSections,
@@ -734,7 +764,7 @@ function setupEventListeners() {
           await updateDoc(doc(db, "recipes", id), data);
         } else {
           data.createdAt = serverTimestamp();
-          await addDoc(collection(db, "recipes"), data);
+          await addDoc(collection(db, "recipes", id), data);
         }
         if (modalRecipeForm) modalRecipeForm.classList.add('hidden');
       } catch (err) {
