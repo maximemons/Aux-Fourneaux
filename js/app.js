@@ -31,6 +31,19 @@ let categoriesBar, recipesGrid, emptyState, currentCategoryTitle, recipeCount, s
 let btnAddRecipe, btnLogin, btnLogout, userProfile, userAvatar, userEmail;
 let modalAuth, modalRecipeForm, modalRecipeDetail;
 
+const DEFAULT_CATEGORIES = [
+  { id: 'bebe', name: 'Bébé & Éveil', icon: 'fa-baby' },
+  { id: 'aperitifs', name: 'Apéritifs & Tapas', icon: 'fa-martini-glass-citrus' },
+  { id: 'entrees', name: 'Entrées', icon: 'fa-bowl-rice' },
+  { id: 'plats', name: 'Plats Principaux', icon: 'fa-utensils' },
+  { id: 'desserts', name: 'Desserts', icon: 'fa-cake-candles' },
+  { id: 'boissons', name: 'Boissons & Smoothies', icon: 'fa-glass-water' },
+  { id: 'sauces', name: 'Sauces & Condiments', icon: 'fa-jar' },
+  { id: 'pain', name: 'Pains & Boulangerie', icon: 'fa-bread-slice' },
+  { id: 'vege', name: 'Végétarien & Végan', icon: 'fa-leaf' },
+  { id: 'soupes', name: 'Soupes & Potages', icon: 'fa-bowl-food' }
+];
+
 function initDOM() {
   categoriesBar = document.getElementById('categories-bar');
   recipesGrid = document.getElementById('recipes-grid');
@@ -67,18 +80,13 @@ function initCategoriesListener() {
   try {
     const catCol = collection(db, "categories");
     onSnapshot(catCol, async (snapshot) => {
-      if (snapshot.empty) {
-        for (const cat of DEFAULT_CATEGORIES) {
-          await setDoc(doc(db, "categories", cat.id), {
-            name: cat.name,
-            icon: cat.icon
-          });
-        }
-      } else {
+      if (!snapshot.empty) {
         categoriesList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        renderCategories();
-        populateCategorySelect();
+      } else {
+        categoriesList = DEFAULT_CATEGORIES;
       }
+      renderCategories();
+      populateCategorySelect();
     });
   } catch (err) {
     categoriesList = DEFAULT_CATEGORIES;
@@ -219,16 +227,9 @@ function initFirestore() {
   try {
     const colRef = collection(db, "recipes");
     onSnapshot(colRef, async (snapshot) => {
-      if (snapshot.empty) {
-        await addDoc(colRef, {
-          ...BASIC_RISOTTO,
-          createdAt: serverTimestamp()
-        });
-      } else {
-        recipes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        renderCategories();
-        renderRecipes();
-      }
+      recipes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      renderCategories();
+      renderRecipes();
     });
   } catch (err) {
     recipes = [];
@@ -244,9 +245,13 @@ function renderRecipes() {
     const matchesCat = favoritesFilterActive 
       ? favoriteIds.includes(r.id) 
       : (activeCategory === 'all' || (r.category && categoriesList.find(c => c.id === activeCategory)?.name.toLowerCase() === r.category.toLowerCase()));
-    const matchesSearch = !searchQuery || 
-      (r.title && r.title.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (r.ingredients && r.ingredients.some(i => i.toLowerCase().includes(searchQuery.toLowerCase())));
+    
+    const cleanSearch = searchQuery.trim().toLowerCase().replace(/^#/, '');
+    const matchesSearch = !cleanSearch || 
+      (r.title && r.title.toLowerCase().includes(cleanSearch)) ||
+      (r.ingredients && r.ingredients.some(i => i.toLowerCase().includes(cleanSearch))) ||
+      (r.tags && r.tags.some(t => t.toLowerCase().includes(cleanSearch)));
+
     return matchesCat && matchesSearch;
   });
 
@@ -293,10 +298,16 @@ function renderRecipes() {
         <div class="p-5 flex-grow flex flex-col justify-between space-y-4">
           <div>
             <h4 class="font-serif font-bold text-lg text-slate-900 group-hover:text-orange-600 transition-colors line-clamp-2">${r.title}</h4>
-            <div class="flex items-center space-x-4 mt-3 text-xs text-slate-500 font-medium">
+            <div class="flex items-center space-x-4 mt-2 text-xs text-slate-500 font-medium">
               <span class="flex items-center space-x-1"><i class="fa-regular fa-clock text-orange-500"></i><span>${r.prepTime || '15 min'}</span></span>
               ${r.servings ? `<span class="flex items-center space-x-1"><i class="fa-solid fa-user-group text-orange-500"></i><span>${r.servings}</span></span>` : ''}
             </div>
+
+            ${r.tags && r.tags.length > 0 ? `
+              <div class="flex flex-wrap gap-1 mt-3">
+                ${r.tags.map(t => `<span class="bg-orange-50 text-orange-700 text-[10px] font-semibold px-2 py-0.5 rounded-md border border-orange-100">#${t}</span>`).join('')}
+              </div>
+            ` : ''}
           </div>
 
           ${currentUser ? `
@@ -333,6 +344,11 @@ window.openRecipeDetail = (id) => {
         <div>
           <span class="bg-orange-600 text-white text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wider">${r.category || 'Général'}</span>
           <h2 class="text-2xl sm:text-3xl font-serif font-bold text-white mt-2">${r.title}</h2>
+          ${r.tags && r.tags.length > 0 ? `
+            <div class="flex flex-wrap gap-1.5 mt-2">
+              ${r.tags.map(t => `<span class="bg-white/20 backdrop-blur-md text-white text-xs font-medium px-2.5 py-0.5 rounded-full">#${t}</span>`).join('')}
+            </div>
+          ` : ''}
         </div>
         <button onclick="toggleFavorite('${r.id}', event)" class="bg-white/90 backdrop-blur-md w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg hover:scale-105 transition-transform cursor-pointer">
           <i id="detail-heart-icon" class="${isFav ? 'fa-solid fa-heart text-rose-500' : 'fa-regular fa-heart text-slate-500 hover:text-rose-500'} text-xl"></i>
@@ -431,6 +447,7 @@ window.openEditForm = (id) => {
   document.getElementById('recipe-prep').value = r.prepTime || '';
   document.getElementById('recipe-cook').value = r.cookTime || '';
   document.getElementById('recipe-servings').value = r.servings || '';
+  document.getElementById('recipe-tags').value = (r.tags || []).join(', ');
   document.getElementById('recipe-image').value = r.imageUrl || '';
   document.getElementById('recipe-ingredients').value = (r.ingredients || []).join('\n');
   document.getElementById('recipe-steps').value = (r.steps || []).join('\n');
@@ -553,12 +570,18 @@ function setupEventListeners() {
       e.preventDefault();
       const id = document.getElementById('recipe-id').value;
 
+      const tagsInput = document.getElementById('recipe-tags').value;
+      const tagsArray = tagsInput 
+        ? tagsInput.split(',').map(t => t.trim().toLowerCase().replace(/^#/, '')).filter(t => t.length > 0) 
+        : [];
+
       const data = {
         title: document.getElementById('recipe-title').value,
         category: document.getElementById('recipe-category').value,
         prepTime: document.getElementById('recipe-prep').value,
         cookTime: document.getElementById('recipe-cook').value,
         servings: document.getElementById('recipe-servings').value,
+        tags: tagsArray,
         imageUrl: document.getElementById('recipe-image').value,
         ingredients: document.getElementById('recipe-ingredients').value.split('\n').filter(i => i.trim() !== ''),
         steps: document.getElementById('recipe-steps').value.split('\n').filter(s => s.trim() !== ''),
