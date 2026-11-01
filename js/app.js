@@ -26,10 +26,20 @@ let searchQuery = '';
 let isSignUpMode = false;
 let favoriteIds = [];
 let currentRecipeDetail = null;
+let showTotalsMode = false;
 
 let categoriesBar, recipesGrid, emptyState, currentCategoryTitle, recipeCount, searchInput, btnFilterFavorites;
 let btnAddRecipe, btnLogin, btnLogout, userProfile, userAvatar, userEmail;
 let modalAuth, modalRecipeForm, modalRecipeDetail;
+
+function normalizeText(text) {
+  if (!text) return '';
+  return text
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
 
 function initDOM() {
   categoriesBar = document.getElementById('categories-bar');
@@ -166,7 +176,7 @@ function renderCategories() {
     recipes.map(r => r.category ? r.category.trim() : '').filter(c => c.length > 0)
   ));
 
-  const activeCategories = categoriesList.filter(c => usedCategoryNames.some(u => u.toLowerCase() === c.name.toLowerCase()));
+  const activeCategories = categoriesList.filter(c => usedCategoryNames.some(u => normalizeText(u) === normalizeText(c.name)));
 
   if (activeCategories.length === 0) {
     categoriesBar.innerHTML = '';
@@ -225,19 +235,59 @@ function initFirestore() {
   }
 }
 
+function parseSectionedText(rawText) {
+  if (!rawText) return [];
+  const lines = rawText.split('\n');
+  const sections = [];
+  let currentSection = { title: null, items: [] };
+
+  lines.forEach(line => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    
+    const headerMatch = trimmed.match(/^===\s*(.*?)\s*===$/);
+    if (headerMatch) {
+      if (currentSection.items.length > 0 || currentSection.title) {
+        sections.push(currentSection);
+      }
+      currentSection = { title: headerMatch[1], items: [] };
+    } else {
+      currentSection.items.push(trimmed);
+    }
+  });
+
+  if (currentSection.items.length > 0 || currentSection.title) {
+    sections.push(currentSection);
+  }
+
+  return sections;
+}
+
+function formatSectionedTextForForm(sections, fallbackFlatArray) {
+  if (sections && sections.length > 0) {
+    return sections.map(sec => {
+      let str = '';
+      if (sec.title) str += `=== ${sec.title} ===\n`;
+      str += (sec.items || []).join('\n');
+      return str;
+    }).join('\n\n');
+  }
+  return (fallbackFlatArray || []).join('\n');
+}
+
 function renderRecipes() {
   if (!recipesGrid) return;
 
   let filtered = recipes.filter(r => {
     const matchesCat = favoritesFilterActive 
       ? favoriteIds.includes(r.id) 
-      : (activeCategory === 'all' || (r.category && categoriesList.find(c => c.id === activeCategory)?.name.toLowerCase() === r.category.toLowerCase()));
+      : (activeCategory === 'all' || (r.category && normalizeText(categoriesList.find(c => c.id === activeCategory)?.name) === normalizeText(r.category)));
     
-    const cleanSearch = searchQuery.trim().toLowerCase().replace(/^#/, '');
+    const cleanSearch = normalizeText(searchQuery.trim().replace(/^#/, ''));
     const matchesSearch = !cleanSearch || 
-      (r.title && r.title.toLowerCase().includes(cleanSearch)) ||
-      (r.ingredients && r.ingredients.some(i => i.toLowerCase().includes(cleanSearch))) ||
-      (r.tags && r.tags.some(t => t.toLowerCase().includes(cleanSearch)));
+      normalizeText(r.title).includes(cleanSearch) ||
+      (r.ingredients && r.ingredients.some(i => normalizeText(i).includes(cleanSearch))) ||
+      (r.tags && r.tags.some(t => normalizeText(t).includes(cleanSearch)));
 
     return matchesCat && matchesSearch;
   });
@@ -317,6 +367,7 @@ window.openRecipeDetail = (id) => {
   const r = recipes.find(item => item.id === id);
   if (!r) return;
   currentRecipeDetail = r;
+  showTotalsMode = false;
 
   const defaultServingsMatch = r.servings ? r.servings.match(/\d+/) : null;
   const baseServings = defaultServingsMatch ? parseInt(defaultServingsMatch[0], 10) : 4;
@@ -363,29 +414,36 @@ window.openRecipeDetail = (id) => {
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div class="space-y-3">
-          <h4 class="font-serif font-bold text-lg text-slate-900 border-b border-slate-200 pb-2">Ingrédients</h4>
-          <ul id="ingredients-list" class="space-y-2 text-sm text-slate-600">
-          </ul>
+        <div class="space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-200 pb-2">
+            <h4 class="font-serif font-bold text-lg text-slate-900">Ingrédients</h4>
+            <button id="btn-toggle-totals" onclick="toggleIngredientsTotals(${baseServings})" class="text-xs font-semibold px-2.5 py-1 rounded-lg bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors cursor-pointer flex items-center space-x-1">
+              <i class="fa-solid fa-calculator text-[10px]"></i>
+              <span id="totals-btn-label">Vue globale</span>
+            </button>
+          </div>
+          <div id="ingredients-container" class="space-y-4 text-sm text-slate-600">
+          </div>
         </div>
 
-        <div class="md:col-span-2 space-y-3">
+        <div class="md:col-span-2 space-y-4">
           <h4 class="font-serif font-bold text-lg text-slate-900 border-b border-slate-200 pb-2">Préparation</h4>
-          <ol class="space-y-3 text-sm text-slate-600">
-            ${(r.steps || []).map((step, idx) => `
-              <li class="flex items-start space-x-3">
-                <span class="w-6 h-6 rounded-full bg-orange-100 text-orange-700 font-bold text-xs flex items-center justify-center flex-shrink-0 mt-0.5">${idx + 1}</span>
-                <span>${step}</span>
-              </li>
-            `).join('')}
-          </ol>
+          <div id="steps-container" class="space-y-4 text-sm text-slate-600">
+          </div>
         </div>
       </div>
     </div>
   `;
 
-  renderIngredients(baseServings, baseServings);
+  renderIngredientsAndSteps(baseServings, baseServings);
   modalRecipeDetail.classList.remove('hidden');
+};
+
+window.toggleIngredientsTotals = (baseServings) => {
+  showTotalsMode = !showTotalsMode;
+  const btnLabel = document.getElementById('totals-btn-label');
+  if (btnLabel) btnLabel.textContent = showTotalsMode ? "Vue par élément" : "Vue globale";
+  renderIngredientsAndSteps(window._activeServings || baseServings, baseServings);
 };
 
 window.changeServings = (delta, baseServings) => {
@@ -398,29 +456,114 @@ window.changeServings = (delta, baseServings) => {
   const displayEl = document.getElementById('servings-display');
   if (displayEl) displayEl.textContent = window._activeServings;
 
-  renderIngredients(window._activeServings, baseServings);
+  renderIngredientsAndSteps(window._activeServings, baseServings);
 };
 
-function renderIngredients(targetServings, baseServings) {
-  const ul = document.getElementById('ingredients-list');
-  if (!ul || !currentRecipeDetail) return;
+function scaleIngredientText(item, ratio) {
+  return item.replace(/(\d+([.,]\d+)?)/, (match) => {
+    const num = parseFloat(match.replace(',', '.'));
+    const multiplied = num * ratio;
+    return Number.isInteger(multiplied) ? multiplied : multiplied.toFixed(1).replace('.0', '');
+  });
+}
+
+function calculateAggregatedIngredients(ingredientsList, ratio) {
+  const totals = {};
+
+  ingredientsList.forEach(rawItem => {
+    const scaled = scaleIngredientText(rawItem, ratio);
+    const match = scaled.match(/^(\d+([.,]\d+)?)\s*([a-zA-Zà-ÿÀ-Ÿ°c.à.s.gkgmLl]+)?\s*(?:de|d')?\s*(.*)$/i);
+
+    if (match) {
+      const val = parseFloat(match[1].replace(',', '.'));
+      const unit = normalizeText(match[3] || '');
+      const name = normalizeText(match[4] || match[0]);
+      const key = `${name}___${unit}`;
+
+      if (!totals[key]) {
+        totals[key] = { val: 0, unit: match[3] || '', name, originalName: match[4] || match[0] };
+      }
+      totals[key].val += val;
+    } else {
+      const key = normalizeText(scaled);
+      if (!totals[key]) {
+        totals[key] = { val: null, unit: '', name: scaled, originalName: scaled };
+      }
+    }
+  });
+
+  return Object.values(totals).map(t => {
+    if (t.val === null) return t.originalName;
+    const cleanVal = Number.isInteger(t.val) ? t.val : t.val.toFixed(1).replace('.0', '');
+    const unitStr = t.unit ? ` ${t.unit}` : '';
+    return `${cleanVal}${unitStr} ${t.originalName}`;
+  });
+}
+
+function renderIngredientsAndSteps(targetServings, baseServings) {
+  const ingContainer = document.getElementById('ingredients-container');
+  const stepsContainer = document.getElementById('steps-container');
+  if (!ingContainer || !stepsContainer || !currentRecipeDetail) return;
 
   const ratio = targetServings / baseServings;
 
-  ul.innerHTML = (currentRecipeDetail.ingredients || []).map(item => {
-    const scaledItem = item.replace(/(\d+([.,]\d+)?)/, (match) => {
-      const num = parseFloat(match.replace(',', '.'));
-      const multiplied = num * ratio;
-      return Number.isInteger(multiplied) ? multiplied : multiplied.toFixed(1).replace('.0', '');
-    });
+  const ingSections = currentRecipeDetail.ingredientsSections && currentRecipeDetail.ingredientsSections.length > 0 
+    ? currentRecipeDetail.ingredientsSections 
+    : [{ title: null, items: currentRecipeDetail.ingredients || [] }];
 
-    return `
-      <li class="flex items-start space-x-2">
-        <i class="fa-solid fa-check text-orange-500 mt-1 text-xs"></i>
-        <span>${scaledItem}</span>
-      </li>
+  if (showTotalsMode) {
+    const allItems = ingSections.flatMap(s => s.items || []);
+    const aggregated = calculateAggregatedIngredients(allItems, ratio);
+
+    ingContainer.innerHTML = `
+      <div class="bg-orange-50/60 p-3.5 rounded-2xl border border-orange-100">
+        <h5 class="font-bold text-xs text-orange-700 uppercase tracking-wider mb-2 flex items-center space-x-1">
+          <i class="fa-solid fa-layer-group"></i>
+          <span>Total cumulé des ingrédients</span>
+        </h5>
+        <ul class="space-y-2">
+          ${aggregated.map(item => `
+            <li class="flex items-start space-x-2">
+              <i class="fa-solid fa-check text-orange-500 mt-1 text-xs"></i>
+              <span class="font-medium text-slate-800">${item}</span>
+            </li>
+          `).join('')}
+        </ul>
+      </div>
     `;
-  }).join('');
+  } else {
+    ingContainer.innerHTML = ingSections.map(sec => `
+      <div class="space-y-2">
+        ${sec.title ? `<h5 class="font-bold text-xs text-orange-600 uppercase tracking-wider bg-orange-50/80 px-2.5 py-1 rounded-lg border border-orange-100 inline-block">${sec.title}</h5>` : ''}
+        <ul class="space-y-2">
+          ${(sec.items || []).map(item => `
+            <li class="flex items-start space-x-2">
+              <i class="fa-solid fa-check text-orange-500 mt-1 text-xs"></i>
+              <span>${scaleIngredientText(item, ratio)}</span>
+            </li>
+          `).join('')}
+        </ul>
+      </div>
+    `).join('');
+  }
+
+  const stepSections = currentRecipeDetail.stepsSections && currentRecipeDetail.stepsSections.length > 0 
+    ? currentRecipeDetail.stepsSections 
+    : [{ title: null, items: currentRecipeDetail.steps || [] }];
+
+  stepsContainer.innerHTML = stepSections.map(sec => `
+    <div class="space-y-3">
+      ${sec.title ? `<h5 class="font-bold text-sm text-slate-900 border-l-2 border-orange-500 pl-2.5">${sec.title}</h5>` : ''}
+      <ol class="space-y-2.5">
+        ${(sec.items || []).map((step, idx) => `
+          <li class="flex items-start space-x-3">
+            <span class="w-6 h-6 rounded-full bg-orange-100 text-orange-700 font-bold text-xs flex items-center justify-center flex-shrink-0 mt-0.5">${idx + 1}</span>
+            <span>${step}</span>
+          </li>
+        `).join('')}
+      </ol>
+    </div>
+  `).join('');
 }
 
 window.openEditForm = (id) => {
@@ -436,8 +579,9 @@ window.openEditForm = (id) => {
   document.getElementById('recipe-servings').value = r.servings || '';
   document.getElementById('recipe-tags').value = (r.tags || []).join(', ');
   document.getElementById('recipe-image').value = r.imageUrl || '';
-  document.getElementById('recipe-ingredients').value = (r.ingredients || []).join('\n');
-  document.getElementById('recipe-steps').value = (r.steps || []).join('\n');
+  
+  document.getElementById('recipe-ingredients').value = formatSectionedTextForForm(r.ingredientsSections, r.ingredients);
+  document.getElementById('recipe-steps').value = formatSectionedTextForForm(r.stepsSections, r.steps);
 
   modalRecipeForm.classList.remove('hidden');
 };
@@ -559,8 +703,16 @@ function setupEventListeners() {
 
       const tagsInput = document.getElementById('recipe-tags').value;
       const tagsArray = tagsInput 
-        ? tagsInput.split(',').map(t => t.trim().toLowerCase().replace(/^#/, '')).filter(t => t.length > 0) 
+        ? tagsInput.split(',').map(t => normalizeText(t.trim().replace(/^#/, ''))).filter(t => t.length > 0) 
         : [];
+
+      const rawIng = document.getElementById('recipe-ingredients').value;
+      const ingSections = parseSectionedText(rawIng);
+      const flatIngredients = ingSections.flatMap(s => s.items);
+
+      const rawSteps = document.getElementById('recipe-steps').value;
+      const stepSections = parseSectionedText(rawSteps);
+      const flatSteps = stepSections.flatMap(s => s.items);
 
       const data = {
         title: document.getElementById('recipe-title').value,
@@ -570,8 +722,10 @@ function setupEventListeners() {
         servings: document.getElementById('recipe-servings').value,
         tags: tagsArray,
         imageUrl: document.getElementById('recipe-image').value,
-        ingredients: document.getElementById('recipe-ingredients').value.split('\n').filter(i => i.trim() !== ''),
-        steps: document.getElementById('recipe-steps').value.split('\n').filter(s => s.trim() !== ''),
+        ingredientsSections: ingSections,
+        ingredients: flatIngredients,
+        stepsSections: stepSections,
+        steps: flatSteps,
         updatedAt: serverTimestamp()
       };
 
