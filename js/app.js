@@ -79,7 +79,6 @@ function initDOM() {
   initCategoriesListener();
   initFirestore();
 
-  // Gestion des liens de partage d'URL deep-link (#recipe-ID) et bouton retour navigateur
   window.addEventListener('popstate', checkUrlHash);
 }
 
@@ -255,7 +254,7 @@ function initFirestore() {
       recipes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       renderCategories();
       renderRecipes();
-      checkUrlHash(); // Vérifier si l'URL contient un lien de partage de recette #recipe-ID
+      checkUrlHash();
     });
   } catch (err) {
     recipes = [];
@@ -316,6 +315,7 @@ function renderRecipes() {
     const matchesSearch = !cleanSearch || 
       normalizeText(r.title).includes(cleanSearch) ||
       (r.ingredients && r.ingredients.some(i => normalizeText(i).includes(cleanSearch))) ||
+      (r.equipment && r.equipment.some(e => normalizeText(e).includes(cleanSearch))) ||
       (r.tags && r.tags.some(t => normalizeText(t).includes(cleanSearch)));
 
     return matchesCat && matchesSearch;
@@ -431,6 +431,10 @@ window.openRecipeDetail = (id, updateHistory = true) => {
   const isVideo = r.externalLink && (r.externalLink.includes('youtube.com') || r.externalLink.includes('youtu.be') || r.externalLink.includes('vimeo') || r.externalLink.includes('tiktok.com'));
 
   const content = document.getElementById('detail-content');
+  
+  // S'assurer que le contenu du popup remonte bien tout en haut au chargement
+  content.scrollTop = 0;
+
   content.innerHTML = `
     <div class="relative h-64 sm:h-80 w-full">
       <img src="${r.imageUrl || 'https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&q=80&w=800'}" class="w-full h-full object-cover">
@@ -493,6 +497,23 @@ window.openRecipeDetail = (id, updateHistory = true) => {
         </div>
       </div>
 
+      ${r.equipment && r.equipment.length > 0 ? `
+        <div class="p-4 bg-amber-50/60 rounded-2xl border border-amber-200/80 space-y-2">
+          <h5 class="font-bold text-xs text-amber-800 uppercase tracking-wider flex items-center space-x-1.5">
+            <i class="fa-solid fa-kitchen-set text-amber-600"></i>
+            <span>Matériel nécessaire</span>
+          </h5>
+          <ul class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-amber-900 font-medium">
+            ${r.equipment.map(item => `
+              <li class="flex items-center space-x-2">
+                <i class="fa-solid fa-screwdriver-wrench text-amber-500 text-[10px]"></i>
+                <span>${item}</span>
+              </li>
+            `).join('')}
+          </ul>
+        </div>
+      ` : ''}
+
       <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
         <div class="space-y-4">
           <div class="flex items-center justify-between border-b border-slate-200 pb-2">
@@ -516,10 +537,8 @@ window.openRecipeDetail = (id, updateHistory = true) => {
   `;
 
   renderIngredientsAndSteps(baseServings, baseServings);
-  
-  // Réinitialiser le défilement en haut du popup à l'ouverture
-  content.scrollTop = 0;
   modalRecipeDetail.classList.remove('hidden');
+  content.scrollTop = 0;
 };
 
 function closeRecipeDetailModal(updateHistory = true) {
@@ -674,6 +693,7 @@ window.openEditForm = (id) => {
   document.getElementById('recipe-tags').value = (r.tags || []).join(', ');
   document.getElementById('recipe-image').value = r.imageUrl || '';
   document.getElementById('recipe-external-link').value = r.externalLink || '';
+  document.getElementById('recipe-equipment').value = (r.equipment || []).join('\n');
   
   document.getElementById('recipe-ingredients').value = formatSectionedTextForForm(r.ingredientsSections, r.ingredients);
   document.getElementById('recipe-steps').value = formatSectionedTextForForm(r.stepsSections, r.steps);
@@ -761,10 +781,22 @@ function setupEventListeners() {
   if (closeAuthBtn) closeAuthBtn.addEventListener('click', () => modalAuth.classList.add('hidden'));
 
   const closeFormBtn = document.getElementById('btn-close-form');
-  if (closeFormBtn) closeFormBtn.addEventListener('click', () => modalRecipeForm.classList.add('hidden'));
+  if (closeFormBtn) {
+    closeFormBtn.addEventListener('click', () => {
+      modalRecipeForm.classList.add('hidden');
+      const formModalBody = document.getElementById('form-modal-body');
+      if (formModalBody) formModalBody.scrollTop = 0;
+    });
+  }
 
   const cancelFormBtn = document.getElementById('btn-cancel-form');
-  if (cancelFormBtn) cancelFormBtn.addEventListener('click', () => modalRecipeForm.classList.add('hidden'));
+  if (cancelFormBtn) {
+    cancelFormBtn.addEventListener('click', () => {
+      modalRecipeForm.classList.add('hidden');
+      const formModalBody = document.getElementById('form-modal-body');
+      if (formModalBody) formModalBody.scrollTop = 0;
+    });
+  }
 
   const closeDetailBtn = document.getElementById('btn-close-detail');
   if (closeDetailBtn) closeDetailBtn.addEventListener('click', () => closeRecipeDetailModal(true));
@@ -819,6 +851,11 @@ function setupEventListeners() {
         ? tagsInput.split(',').map(t => normalizeText(t.trim().replace(/^#/, ''))).filter(t => t.length > 0) 
         : [];
 
+      const equipmentInput = document.getElementById('recipe-equipment').value;
+      const equipmentArray = equipmentInput
+        ? equipmentInput.split('\n').map(e => e.trim()).filter(e => e.length > 0)
+        : [];
+
       const rawIng = document.getElementById('recipe-ingredients').value;
       const ingSections = parseSectionedText(rawIng);
       const flatIngredients = ingSections.flatMap(s => s.items);
@@ -836,6 +873,7 @@ function setupEventListeners() {
         tags: tagsArray,
         imageUrl: document.getElementById('recipe-image').value,
         externalLink: document.getElementById('recipe-external-link').value,
+        equipment: equipmentArray,
         ingredientsSections: ingSections,
         ingredients: flatIngredients,
         stepsSections: stepSections,
