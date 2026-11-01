@@ -306,6 +306,71 @@ function formatSectionedTextForForm(sections, fallbackFlatArray) {
   return (fallbackFlatArray || []).join('\n');
 }
 
+function timeLabel(value) {
+  const v = (value || '').toString().trim();
+  return v.length > 0 ? v : 'N/A';
+}
+
+// Convertit "45 min", "1h30", "1 h 15", "2h", "20" en minutes (null si illisible)
+function parseMinutes(value) {
+  if (!value) return null;
+  const str = value.toString().toLowerCase().replace(',', '.').trim();
+  if (!str) return null;
+  const hm = str.match(/(\d+(?:\.\d+)?)\s*h(?:eures?)?\s*(\d+)?/);
+  if (hm) {
+    const total = parseFloat(hm[1]) * 60 + (hm[2] ? parseInt(hm[2], 10) : 0);
+    return total > 0 ? total : null;
+  }
+  const m = str.match(/(\d+(?:\.\d+)?)/);
+  if (m) {
+    const total = parseFloat(m[1]);
+    return total > 0 ? total : null;
+  }
+  return null;
+}
+
+function formatMinutes(total) {
+  const t = Math.round(total);
+  if (t < 60) return `${t} min`;
+  const h = Math.floor(t / 60);
+  const mn = t % 60;
+  return mn ? `${h} h ${String(mn).padStart(2, '0')}` : `${h} h`;
+}
+
+function renderTimeVisualization(r) {
+  const prep = parseMinutes(r.prepTime);
+  const cook = parseMinutes(r.cookTime);
+  const total = (prep || 0) + (cook || 0);
+
+  const bar = total > 0 ? `
+    <div class="flex items-center space-x-2 mt-2.5">
+      <div class="flex-grow h-1.5 rounded-full bg-slate-100 overflow-hidden flex" title="Préparation / Cuisson">
+        ${prep ? `<div class="h-full bg-amber-400" style="width:${(prep / total) * 100}%"></div>` : ''}
+        ${cook ? `<div class="h-full bg-orange-600" style="width:${(cook / total) * 100}%"></div>` : ''}
+      </div>
+      <span class="text-[10px] text-slate-400 font-semibold whitespace-nowrap">${formatMinutes(total)}</span>
+    </div>
+  ` : '';
+
+  return `
+    <div class="mt-3">
+      <div class="grid grid-cols-2 gap-2 text-xs font-medium">
+        <div class="flex items-center space-x-1.5 ${prep ? 'text-slate-600' : 'text-slate-400'}">
+          <span class="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0"></span>
+          <i class="fa-regular fa-clock text-amber-500"></i>
+          <span class="truncate" title="Préparation">${timeLabel(r.prepTime)}</span>
+        </div>
+        <div class="flex items-center space-x-1.5 ${cook ? 'text-slate-600' : 'text-slate-400'}">
+          <span class="w-1.5 h-1.5 rounded-full bg-orange-600 flex-shrink-0"></span>
+          <i class="fa-solid fa-fire text-orange-600"></i>
+          <span class="truncate" title="Cuisson">${timeLabel(r.cookTime)}</span>
+        </div>
+      </div>
+      ${bar}
+    </div>
+  `;
+}
+
 function renderRecipeCard(r) {
   const isFav = favoriteIds.includes(r.id);
   const isVideo = r.externalLink && (r.externalLink.includes('youtube.com') || r.externalLink.includes('youtu.be') || r.externalLink.includes('vimeo') || r.externalLink.includes('tiktok.com'));
@@ -332,10 +397,8 @@ function renderRecipeCard(r) {
       <div class="p-5 flex-grow flex flex-col justify-between space-y-4">
         <div>
           <h4 class="font-serif font-bold text-lg text-slate-900 group-hover:text-orange-600 transition-colors line-clamp-2">${r.title}</h4>
-          <div class="flex items-center space-x-4 mt-2 text-xs text-slate-500 font-medium">
-            <span class="flex items-center space-x-1"><i class="fa-regular fa-clock text-orange-500"></i><span>${r.prepTime || '15 min'}</span></span>
-            ${r.servings ? `<span class="flex items-center space-x-1"><i class="fa-solid fa-user-group text-orange-500"></i><span>${r.servings}</span></span>` : ''}
-          </div>
+          ${renderTimeVisualization(r)}
+          ${r.servings ? `<div class="flex items-center space-x-1 mt-2.5 text-xs text-slate-500 font-medium"><i class="fa-solid fa-user-group text-orange-500"></i><span>${r.servings}</span></div>` : ''}
 
           ${r.tags && r.tags.length > 0 ? `
             <div class="flex flex-wrap gap-1 mt-3">
@@ -536,8 +599,8 @@ window.openRecipeDetail = (id, updateHistory = true) => {
         </div>
 
         <div class="flex items-center space-x-6 text-xs sm:text-sm font-semibold text-slate-700">
-          <div><i class="fa-regular fa-clock text-orange-600 text-base block mb-1"></i>Préparation: ${r.prepTime || 'N/A'}</div>
-          <div><i class="fa-solid fa-fire text-orange-600 text-base block mb-1"></i>Cuisson: ${r.cookTime || 'S.A.'}</div>
+          <div><i class="fa-regular fa-clock text-orange-600 text-base block mb-1"></i>Préparation: ${timeLabel(r.prepTime)}</div>
+          <div><i class="fa-solid fa-fire text-orange-600 text-base block mb-1"></i>Cuisson: ${timeLabel(r.cookTime)}</div>
         </div>
       </div>
 
@@ -967,8 +1030,8 @@ function setupEventListeners() {
       const data = {
         title: document.getElementById('recipe-title').value,
         category: document.getElementById('recipe-category').value,
-        prepTime: document.getElementById('recipe-prep').value,
-        cookTime: document.getElementById('recipe-cook').value,
+        prepTime: document.getElementById('recipe-prep').value.trim(),
+        cookTime: document.getElementById('recipe-cook').value.trim(),
         servings: document.getElementById('recipe-servings').value,
         tags: tagsArray,
         imageUrl: document.getElementById('recipe-image').value,
