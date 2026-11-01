@@ -107,7 +107,7 @@
       </h3>
     </div>
 
-    <div id="recipes-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+    <div id="recipes-grid" class="space-y-10">
     </div>
 
     <div id="empty-state" class="hidden flex-col items-center justify-center py-16 text-center space-y-3">
@@ -123,8 +123,8 @@
     <p>© 2026 Aux fourneaux — Carnet de recettes personnel</p>
   </footer>
 
-  <div id="modal-auth" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 overflow-hidden">
-    <div class="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl space-y-6 relative animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+  <div id="modal-auth" class="modal-backdrop fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 overflow-hidden">
+    <div class="modal-card bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl space-y-6 relative animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
       <button id="btn-close-auth" class="absolute top-5 right-5 text-slate-400 hover:text-slate-600 w-8 h-8 rounded-full flex items-center justify-center cursor-pointer z-10">
         <i class="fa-solid fa-xmark text-lg"></i>
       </button>
@@ -164,8 +164,8 @@
     </div>
   </div>
 
-  <div id="modal-recipe-form" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-hidden">
-    <div class="bg-white rounded-3xl max-w-2xl w-full shadow-2xl relative flex flex-col max-h-[90vh] sm:max-h-[85vh]">
+  <div id="modal-recipe-form" class="modal-backdrop fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-hidden">
+    <div class="modal-card bg-white rounded-3xl max-w-2xl w-full shadow-2xl relative flex flex-col max-h-[90vh] sm:max-h-[85vh]">
       <div class="p-5 sm:p-6 border-b border-slate-100 flex items-center justify-between flex-shrink-0 bg-white rounded-t-3xl">
         <h3 id="form-title" class="text-xl sm:text-2xl font-serif font-bold text-slate-900">Nouvelle Recette</h3>
         <button id="btn-close-form" class="text-slate-400 hover:text-slate-600 w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-colors">
@@ -250,8 +250,8 @@
     </div>
   </div>
 
-  <div id="modal-recipe-detail" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-hidden">
-    <div class="bg-white rounded-3xl max-w-3xl w-full shadow-2xl relative flex flex-col max-h-[90vh]">
+  <div id="modal-recipe-detail" class="modal-backdrop fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-hidden">
+    <div class="modal-card bg-white rounded-3xl max-w-3xl w-full shadow-2xl relative flex flex-col max-h-[90vh]">
       <button id="btn-close-detail" class="absolute top-4 right-4 z-20 bg-white/80 hover:bg-white text-slate-700 w-9 h-9 rounded-full flex items-center justify-center backdrop-blur-md transition-all cursor-pointer">
         <i class="fa-solid fa-xmark text-lg"></i>
       </button>

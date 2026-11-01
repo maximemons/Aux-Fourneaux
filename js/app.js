@@ -122,7 +122,8 @@ function initCategoriesListener() {
 function populateCategorySelect() {
   const selectCategory = document.getElementById('recipe-category');
   if (selectCategory) {
-    selectCategory.innerHTML = categoriesList.map(c => `
+    const sortedCats = [...categoriesList].sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
+    selectCategory.innerHTML = sortedCats.map(c => `
       <option value="${c.name}">${c.name}</option>
     `).join('');
   }
@@ -203,7 +204,9 @@ function renderCategories() {
     recipes.map(r => r.category ? r.category.trim() : '').filter(c => c.length > 0)
   ));
 
-  const activeCategories = categoriesList.filter(c => usedCategoryNames.some(u => normalizeText(u) === normalizeText(c.name)));
+  const activeCategories = categoriesList
+    .filter(c => usedCategoryNames.some(u => normalizeText(u) === normalizeText(c.name)))
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
 
   if (activeCategories.length === 0) {
     categoriesBar.innerHTML = '';
@@ -303,6 +306,59 @@ function formatSectionedTextForForm(sections, fallbackFlatArray) {
   return (fallbackFlatArray || []).join('\n');
 }
 
+function renderRecipeCard(r) {
+  const isFav = favoriteIds.includes(r.id);
+  const isVideo = r.externalLink && (r.externalLink.includes('youtube.com') || r.externalLink.includes('youtu.be') || r.externalLink.includes('vimeo') || r.externalLink.includes('tiktok.com'));
+
+  return `
+    <div class="bg-white rounded-3xl border border-slate-200/85 overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 flex flex-col group cursor-pointer relative" onclick="openRecipeDetail('${r.id}')">
+      <button onclick="toggleFavorite('${r.id}', event)" class="absolute top-3 right-3 z-10 w-9 h-9 bg-white/90 backdrop-blur-md rounded-full flex items-center justify-center shadow-sm transition-transform hover:scale-110 cursor-pointer">
+        <i class="${isFav ? 'fa-solid fa-heart text-rose-500' : 'fa-regular fa-heart text-slate-500 hover:text-rose-500'} text-sm"></i>
+      </button>
+
+      <div class="relative h-48 overflow-hidden bg-slate-100">
+        <img src="${r.imageUrl || 'https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&q=80&w=800'}" alt="${r.title}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
+        <span class="absolute top-3 left-3 bg-white/90 backdrop-blur-md text-slate-800 text-xs font-semibold px-3 py-1 rounded-full shadow-sm">
+          ${r.category || 'Général'}
+        </span>
+        ${r.externalLink ? `
+          <span class="absolute bottom-3 right-3 bg-slate-900/80 backdrop-blur-md text-white text-[11px] font-semibold px-2.5 py-1 rounded-full flex items-center space-x-1 shadow-sm">
+            <i class="fa-solid ${isVideo ? 'fa-video text-red-400' : 'fa-link text-orange-400'} text-[10px]"></i>
+            <span>${isVideo ? 'Vidéo' : 'Lien'}</span>
+          </span>
+        ` : ''}
+      </div>
+
+      <div class="p-5 flex-grow flex flex-col justify-between space-y-4">
+        <div>
+          <h4 class="font-serif font-bold text-lg text-slate-900 group-hover:text-orange-600 transition-colors line-clamp-2">${r.title}</h4>
+          <div class="flex items-center space-x-4 mt-2 text-xs text-slate-500 font-medium">
+            <span class="flex items-center space-x-1"><i class="fa-regular fa-clock text-orange-500"></i><span>${r.prepTime || '15 min'}</span></span>
+            ${r.servings ? `<span class="flex items-center space-x-1"><i class="fa-solid fa-user-group text-orange-500"></i><span>${r.servings}</span></span>` : ''}
+          </div>
+
+          ${r.tags && r.tags.length > 0 ? `
+            <div class="flex flex-wrap gap-1 mt-3">
+              ${r.tags.map(t => `<span class="bg-orange-50 text-orange-700 text-[10px] font-semibold px-2 py-0.5 rounded-md border border-orange-100">#${t}</span>`).join('')}
+            </div>
+          ` : ''}
+        </div>
+
+        ${currentUser ? `
+          <div class="flex items-center justify-end space-x-2 pt-3 border-t border-slate-100" onclick="event.stopPropagation()">
+            <button onclick="openEditForm('${r.id}')" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-orange-100 text-slate-600 hover:text-orange-600 flex items-center justify-center transition-colors cursor-pointer">
+              <i class="fa-solid fa-pen text-xs"></i>
+            </button>
+            <button onclick="deleteRecipe('${r.id}')" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-red-100 text-slate-600 hover:text-red-600 flex items-center justify-center transition-colors cursor-pointer">
+              <i class="fa-solid fa-trash text-xs"></i>
+            </button>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+  `;
+}
+
 function renderRecipes() {
   if (!recipesGrid) return;
 
@@ -346,58 +402,48 @@ function renderRecipes() {
     emptyState.classList.remove('flex');
   }
 
-  recipesGrid.innerHTML = filtered.map(r => {
-    const isFav = favoriteIds.includes(r.id);
-    const isVideo = r.externalLink && (r.externalLink.includes('youtube.com') || r.externalLink.includes('youtu.be') || r.externalLink.includes('vimeo') || r.externalLink.includes('tiktok.com'));
+  const sortRecipesByName = (recList) => {
+    return [...recList].sort((a, b) => a.title.localeCompare(b.title, 'fr', { sensitivity: 'base' }));
+  };
 
-    return `
-      <div class="bg-white rounded-3xl border border-slate-200/85 overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 flex flex-col group cursor-pointer relative" onclick="openRecipeDetail('${r.id}')">
-        <button onclick="toggleFavorite('${r.id}', event)" class="absolute top-3 right-3 z-10 w-9 h-9 bg-white/90 backdrop-blur-md rounded-full flex items-center justify-center shadow-sm transition-transform hover:scale-110 cursor-pointer">
-          <i class="${isFav ? 'fa-solid fa-heart text-rose-500' : 'fa-regular fa-heart text-slate-500 hover:text-rose-500'} text-sm"></i>
-        </button>
-
-        <div class="relative h-48 overflow-hidden bg-slate-100">
-          <img src="${r.imageUrl || 'https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&q=80&w=800'}" alt="${r.title}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
-          <span class="absolute top-3 left-3 bg-white/90 backdrop-blur-md text-slate-800 text-xs font-semibold px-3 py-1 rounded-full shadow-sm">
-            ${r.category || 'Général'}
-          </span>
-          ${r.externalLink ? `
-            <span class="absolute bottom-3 right-3 bg-slate-900/80 backdrop-blur-md text-white text-[11px] font-semibold px-2.5 py-1 rounded-full flex items-center space-x-1 shadow-sm">
-              <i class="fa-solid ${isVideo ? 'fa-video text-red-400' : 'fa-link text-orange-400'} text-[10px]"></i>
-              <span>${isVideo ? 'Vidéo' : 'Lien'}</span>
-            </span>
-          ` : ''}
-        </div>
-
-        <div class="p-5 flex-grow flex flex-col justify-between space-y-4">
-          <div>
-            <h4 class="font-serif font-bold text-lg text-slate-900 group-hover:text-orange-600 transition-colors line-clamp-2">${r.title}</h4>
-            <div class="flex items-center space-x-4 mt-2 text-xs text-slate-500 font-medium">
-              <span class="flex items-center space-x-1"><i class="fa-regular fa-clock text-orange-500"></i><span>${r.prepTime || '15 min'}</span></span>
-              ${r.servings ? `<span class="flex items-center space-x-1"><i class="fa-solid fa-user-group text-orange-500"></i><span>${r.servings}</span></span>` : ''}
-            </div>
-
-            ${r.tags && r.tags.length > 0 ? `
-              <div class="flex flex-wrap gap-1 mt-3">
-                ${r.tags.map(t => `<span class="bg-orange-50 text-orange-700 text-[10px] font-semibold px-2 py-0.5 rounded-md border border-orange-100">#${t}</span>`).join('')}
-              </div>
-            ` : ''}
-          </div>
-
-          ${currentUser ? `
-            <div class="flex items-center justify-end space-x-2 pt-3 border-t border-slate-100" onclick="event.stopPropagation()">
-              <button onclick="openEditForm('${r.id}')" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-orange-100 text-slate-600 hover:text-orange-600 flex items-center justify-center transition-colors cursor-pointer">
-                <i class="fa-solid fa-pen text-xs"></i>
-              </button>
-              <button onclick="deleteRecipe('${r.id}')" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-red-100 text-slate-600 hover:text-red-600 flex items-center justify-center transition-colors cursor-pointer">
-                <i class="fa-solid fa-trash text-xs"></i>
-              </button>
-            </div>
-          ` : ''}
-        </div>
+  if (activeCategory !== 'all' || favoritesFilterActive) {
+    const sorted = sortRecipesByName(filtered);
+    recipesGrid.innerHTML = `
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        ${sorted.map(r => renderRecipeCard(r)).join('')}
       </div>
     `;
-  }).join('');
+  } else {
+    const grouped = {};
+    filtered.forEach(r => {
+      const catName = r.category || 'Général';
+      if (!grouped[catName]) grouped[catName] = [];
+      grouped[catName].push(r);
+    });
+
+    const sortedCategoryNames = Object.keys(grouped).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
+
+    recipesGrid.innerHTML = sortedCategoryNames.map(catName => {
+      const sortedCatRecipes = sortRecipesByName(grouped[catName]);
+      const catObj = categoriesList.find(c => normalizeText(c.name) === normalizeText(catName));
+      const catIcon = catObj ? catObj.icon : 'fa-layer-group';
+
+      return `
+        <section class="space-y-4">
+          <div class="flex items-center space-x-3 border-b border-slate-200 pb-2">
+            <div class="w-8 h-8 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center text-sm">
+              <i class="fa-solid ${catIcon}"></i>
+            </div>
+            <h4 class="font-serif font-bold text-xl text-slate-900">${catName}</h4>
+            <span class="text-xs font-semibold bg-slate-100 text-slate-600 px-2.5 py-0.5 rounded-full">${sortedCatRecipes.length}</span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            ${sortedCatRecipes.map(r => renderRecipeCard(r)).join('')}
+          </div>
+        </section>
+      `;
+    }).join('');
+  }
 }
 
 window.copyRecipeShareLink = (id) => {
@@ -431,8 +477,6 @@ window.openRecipeDetail = (id, updateHistory = true) => {
   const isVideo = r.externalLink && (r.externalLink.includes('youtube.com') || r.externalLink.includes('youtu.be') || r.externalLink.includes('vimeo') || r.externalLink.includes('tiktok.com'));
 
   const content = document.getElementById('detail-content');
-  
-  // S'assurer que le contenu du popup remonte bien tout en haut au chargement
   content.scrollTop = 0;
 
   content.innerHTML = `
@@ -550,6 +594,16 @@ function closeRecipeDetailModal(updateHistory = true) {
   if (updateHistory && window.location.hash.startsWith('#recipe-')) {
     history.pushState(null, '', window.location.pathname + window.location.search);
   }
+}
+
+function closeAllModals() {
+  if (modalAuth) modalAuth.classList.add('hidden');
+  if (modalRecipeForm) {
+    modalRecipeForm.classList.add('hidden');
+    const formModalBody = document.getElementById('form-modal-body');
+    if (formModalBody) formModalBody.scrollTop = 0;
+  }
+  closeRecipeDetailModal(true);
 }
 
 window.toggleIngredientsTotals = (baseServings) => {
@@ -800,6 +854,20 @@ function setupEventListeners() {
 
   const closeDetailBtn = document.getElementById('btn-close-detail');
   if (closeDetailBtn) closeDetailBtn.addEventListener('click', () => closeRecipeDetailModal(true));
+
+  // Écouteur global pour fermer les popups en cliquant en dehors (sur le fond sombre / backdrop)
+  document.addEventListener('click', (e) => {
+    if (e.target.classList && e.target.classList.contains('modal-backdrop')) {
+      closeAllModals();
+    }
+  });
+
+  // Écouteur global pour fermer les popups avec la touche Échap (Escape)
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeAllModals();
+    }
+  });
 
   const toggleAuthModeBtn = document.getElementById('toggle-auth-mode');
   if (toggleAuthModeBtn) {
