@@ -47,6 +47,18 @@ Quand une recette comporte plusieurs éléments (ex. un insert, une dacquoise, u
 ### Partager
 Le bouton « Partager » copie le lien direct vers la recette, qui s'ouvre directement sur sa fiche.
 
+### Créer une liste de courses
+
+Le bouton « Créer une liste de courses », sous les ingrédients, envoie la recette vers [ListMe](https://maximemons.github.io/ListMe/) :
+
+- les ingrédients sont regroupés (ex. « 1 œuf » + « 3 œufs » = 4 œufs) et calculés pour le nombre de personnes choisi ;
+- les poids et volumes sont conservés (« 250 g », « 20 cl »), les mesures de cuisine (cuillères, pincées) sont remplacées par une unité du produit ;
+- chaque ingrédient peut être décoché (le sel déjà dans le placard, par exemple) ;
+- le champ « Lien de partage d’une liste existante » accepte le lien copié depuis le bouton « Partager » de ListMe : les ingrédients sont ajoutés à cette liste. Le dernier lien utilisé est mémorisé sur l’appareil ;
+- laissé vide, une nouvelle liste portant le nom de la recette est créée.
+
+ListMe s’ouvre dans un nouvel onglet ; les produits inconnus de son catalogue y sont classés par rayon. L’adresse de ListMe utilisée par défaut se règle dans `js/shopping-list.js` (`LISTME_URL`).
+
 ## Favoris
 
 - Le cœur ajoute ou retire une recette des favoris, depuis la carte ou depuis la fiche.

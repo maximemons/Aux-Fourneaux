@@ -1,4 +1,5 @@
 import { auth, db } from './firebase-config.js';
+import { initShoppingList, openShoppingListModal, closeShoppingListModal, isShoppingListOpen } from './shopping-list.js';
 import { 
   onAuthStateChanged, 
   signInWithEmailAndPassword, 
@@ -75,6 +76,7 @@ function initDOM() {
   modalRecipeDetail = document.getElementById('modal-recipe-detail');
 
   setupEventListeners();
+  initShoppingList();
   initAuthObserver();
   initCategoriesListener();
   initFirestore();
@@ -632,6 +634,10 @@ window.openRecipeDetail = (id, updateHistory = true) => {
           </div>
           <div id="ingredients-container" class="space-y-4 text-sm text-slate-600">
           </div>
+          <button onclick="openShoppingList(${baseServings})" class="w-full flex items-center justify-center space-x-2 px-4 py-3 rounded-2xl bg-orange-600 hover:bg-orange-700 text-white font-semibold text-sm shadow-sm transition-colors cursor-pointer">
+            <i class="fa-solid fa-cart-shopping"></i>
+            <span>Créer une liste de courses</span>
+          </button>
         </div>
 
         <div class="md:col-span-2 space-y-4">
@@ -648,7 +654,13 @@ window.openRecipeDetail = (id, updateHistory = true) => {
   content.scrollTop = 0;
 };
 
+window.openShoppingList = (baseServings) => {
+  if (!currentRecipeDetail) return;
+  openShoppingListModal(currentRecipeDetail, window._activeServings || baseServings, baseServings);
+};
+
 function closeRecipeDetailModal(updateHistory = true) {
+  closeShoppingListModal();
   if (modalRecipeDetail) {
     modalRecipeDetail.classList.add('hidden');
     const content = document.getElementById('detail-content');
@@ -682,6 +694,10 @@ function closeRecipeFormModal() {
 }
 
 function closeAllModals() {
+  if (isShoppingListOpen()) {
+    closeShoppingListModal();
+    return;
+  }
   if (modalAuth && !modalAuth.classList.contains('hidden')) {
     modalAuth.classList.add('hidden');
     return;
