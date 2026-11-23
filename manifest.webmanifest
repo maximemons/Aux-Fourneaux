@@ -1,0 +1,20 @@
+{
+  "id": "./",
+  "name": "Aux fourneaux — Carnet de recettes",
+  "short_name": "Aux fourneaux",
+  "description": "Carnet de recettes personnel pour retrouver, consulter et organiser ses recettes de cuisine.",
+  "lang": "fr",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F8FAFC",
+  "theme_color": "#FFFFFF",
+  "categories": ["food", "lifestyle"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
